@@ -1,355 +1,368 @@
-namespace Duration;
-
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.Text;
-using System.Text.RegularExpressions;
-
-public readonly struct Duration : IEquatable<Duration>
+namespace Duration
 {
-  private readonly int? _years;
-  private readonly int? _months;
-  private readonly int? _days;
-  private readonly int? _weeks;
-  private readonly double? _hours;
-  private readonly double? _minutes;
-  private readonly double? _seconds;
+  using System;
+  using System.Diagnostics.CodeAnalysis;
+  using System.Globalization;
+  using System.Text;
+  using System.Text.RegularExpressions;
 
-  private static readonly Regex[] RegexArray =
-  [
-    new Regex(
-      @"^P(?=.)((?'years'\d+)Y)?((?'months'\d+)M)?((?'days'\d+)D)?(T(?=.)((?'hours'\d+)H)?((?'minutes'\d+)M)?((?'seconds'\d+((\.)\d+)?)S)?)?$",
-      RegexOptions.IgnoreCase | RegexOptions.Compiled),
-    new Regex(
-      @"^P(?=.)((?'years'\d+)Y)?((?'months'\d+)M)?((?'days'\d+)D)?(T(?=.)((?'hours'\d+)H)?((?'minutes'\d+((\.)\d+)?)M)?)?$",
-      RegexOptions.IgnoreCase | RegexOptions.Compiled),
-    new Regex(
-      @"^P(?=.)((?'years'\d+)Y)?((?'months'\d+)M)?((?'days'\d+)D)?(T(?=.)((?'hours'\d+((\.)\d+)?)H)?)?$",
-      RegexOptions.IgnoreCase | RegexOptions.Compiled),
-    new Regex(
-      @"^P(?=.)((?'weeks'\d+)W)$",
-      RegexOptions.IgnoreCase | RegexOptions.Compiled)
-  ];
-
-  private Duration(int? years = null, int? months = null, int? weeks = null, int? days = null,
-    double? hours = null, double? minutes = null, double? seconds = null)
+  public readonly struct Duration : IEquatable<Duration>
   {
-    _years = years;
-    _months = months;
-    _weeks = weeks;
-    _days = days;
-    _hours = hours;
-    _minutes = minutes;
-    _seconds = seconds;
-  }
+    private readonly bool _negative;
+    private readonly int _years;
+    private readonly int _months;
+    private readonly int _weeks;
+    private readonly double _days;
+    private readonly double _hours;
+    private readonly double _minutes;
+    private readonly double _seconds;
 
-  public TimeSpan GetTimespan(DateTime? fromDate = null)
-  {
-    fromDate ??= DateTime.Now;
-    var toDate = fromDate.Value + this;
-    return toDate - fromDate.Value;
-  }
+    private static readonly Regex DurationRegex =
+      new Regex(
+        @"^(?'sign'[+-])?P(?:(?'weeks'\d+)W|(?=.)(?:(?'years'\d+)Y)?(?:(?'months'\d+)M)?(?:(?'days'\d+(?:\.\d+)?)D)?(?:T(?=.)(?:(?'hours'\d+(?:\.\d+)?)H)?(?:(?'minutes'\d+(?:\.\d+)?)M)?(?:(?'seconds'\d+(?:\.\d+)?)S)?)?)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-  public override string ToString()
-  {
-    if (this is
+    private Duration(bool negative = false, int years = 0, int months = 0, int weeks = 0, double days = 0,
+      double hours = 0, double minutes = 0, double seconds = 0)
+    {
+      _negative = negative;
+      _years = years;
+      _months = months;
+      _weeks = weeks;
+      _days = days;
+      _hours = hours;
+      _minutes = minutes;
+      _seconds = seconds;
+    }
+
+    public TimeSpan GetTimespan(DateTime? fromDate = null)
+    {
+      fromDate ??= DateTime.Now;
+      var toDate = fromDate.Value + this;
+      return toDate - fromDate.Value;
+    }
+
+    public override string ToString()
+    {
+      if (_years == 0
+          && _months == 0
+          && _weeks == 0
+          && _days == 0
+          && _hours == 0
+          && _minutes == 0
+          && _seconds == 0)
+      {
+        return "PT0S";
+      }
+
+      var builder = new StringBuilder();
+      if (_negative)
+      {
+        builder.Append('-');
+      }
+
+      builder.Append('P');
+      if (_weeks > 0)
+      {
+        builder.Append(_weeks).Append('W');
+        return builder.ToString();
+      }
+
+      if (_years > 0)
+      {
+        builder.Append(_years).Append('Y');
+      }
+
+      if (_months > 0)
+      {
+        builder.Append(_months).Append('M');
+      }
+
+      if (_days > 0)
+      {
+        builder.Append(_days.ToString("0.##", CultureInfo.InvariantCulture)).Append('D');
+      }
+
+      if (_hours == 0
+          && _minutes == 0
+          && _seconds == 0)
+      {
+        return builder.ToString();
+      }
+
+      builder.Append('T');
+      if (_hours > 0)
+      {
+        builder.Append(_hours.ToString("0.###", CultureInfo.InvariantCulture)).Append('H');
+      }
+
+      if (_minutes > 0)
+      {
+        builder.Append(_minutes.ToString("0.###", CultureInfo.InvariantCulture)).Append('M');
+      }
+
+      if (_seconds > 0)
+      {
+        builder.Append(_seconds.ToString("0.###", CultureInfo.InvariantCulture)).Append('S');
+      }
+
+      return builder.ToString();
+    }
+
+    public override bool Equals([NotNullWhen(true)] object? obj)
+    {
+      return obj is Duration duration  && Equals(duration);
+    }
+
+    public bool Equals(Duration other)
+    {
+      return _negative.Equals(other._negative)
+             && _years.Equals(other._years)
+             && _months.Equals(other._months)
+             && _weeks.Equals(other._weeks)
+             && _days.Equals(other._days)
+             && _hours.Equals(other._hours)
+             && _minutes.Equals(other._minutes)
+             && _seconds.Equals(other._seconds);
+    }
+
+    public override int GetHashCode()
+    {
+      return HashCode.Combine(_negative, _years, _months, _weeks, _days, _hours, _minutes, _seconds);
+    }
+
+    public static readonly Duration Zero = new Duration();
+
+    public static Duration FromString(string duration)
+    {
+      var negative = false;
+      int years = 0;
+      int months = 0;
+      int weeks = 0;
+      double days = 0;
+      double hours = 0;
+      double minutes = 0;
+      double seconds = 0;
+
+        var match = DurationRegex.Match(duration);
+        if (!match.Success)
         {
-          _years: not > 0, _months: not > 0, _weeks: not > 0, _days: not > 0, _hours: not > 0, _minutes: not > 0,
-          _seconds: not > 0
-        })
-    {
-      return "PT0S";
+          throw new InvalidDurationException();
+        }
+
+        if (match.Groups["sign"].Success)
+        {
+          negative = match.Groups["sign"].Value == "-";
+        }
+
+        if (match.Groups["weeks"].Success)
+        {
+          weeks = int.Parse(match.Groups["weeks"].Value, CultureInfo.InvariantCulture);
+          return new Duration(negative, years, months, weeks, days, hours, minutes, seconds);
+        }
+
+        if (match.Groups["years"].Success)
+        {
+          years = int.Parse(match.Groups["years"].Value, CultureInfo.InvariantCulture);
+        }
+
+        if (match.Groups["months"].Success)
+        {
+          months = int.Parse(match.Groups["months"].Value, CultureInfo.InvariantCulture);
+        }
+
+        if (match.Groups["days"].Success)
+        {
+          days = double.Parse(match.Groups["days"].Value, CultureInfo.InvariantCulture);
+        }
+
+        if (match.Groups["hours"].Success)
+        {
+          hours = double.Parse(match.Groups["hours"].Value, CultureInfo.InvariantCulture);
+        }
+
+        if (match.Groups["minutes"].Success)
+        {
+          minutes = double.Parse(match.Groups["minutes"].Value, CultureInfo.InvariantCulture);
+        }
+
+        if (match.Groups["seconds"].Success)
+        {
+          seconds = double.Parse(match.Groups["seconds"].Value, CultureInfo.InvariantCulture);
+        }
+
+      return new Duration(negative, years, months, weeks, days, hours, minutes, seconds);
     }
 
-    var builder = new StringBuilder();
-    builder.Append('P');
-    if (_weeks is > 0)
+    public static Duration FromTimeSpan(TimeSpan timeSpan)
     {
-      builder.Append(_weeks.Value).Append('W');
-      return builder.ToString();
+      return new Duration(
+        negative: timeSpan < TimeSpan.Zero,
+        days: timeSpan.Days,
+        hours: timeSpan.Hours,
+        minutes: timeSpan.Minutes,
+        seconds: timeSpan.Seconds + ((double)timeSpan.Milliseconds / 1000));
     }
 
-    if (_years is > 0)
+
+    public static Duration Difference(DateTime startDate, DateTime endDate, bool absolute = true)
     {
-      builder.Append(_years.Value).Append('Y');
-    }
+      DateTime biggestDate;
+      DateTime smallestDate;
 
-    if (_months is > 0)
-    {
-      builder.Append(_months.Value).Append('M');
-    }
-
-    if (_days is > 0)
-    {
-      builder.Append(_days.Value).Append('D');
-    }
-
-    if (this is { _hours: not > 0, _minutes: not > 0, _seconds: not > 0 })
-    {
-      return builder.ToString();
-    }
-
-    builder.Append('T');
-    if (_hours is > 0)
-    {
-      builder.Append(_hours.Value.ToString("0.###", CultureInfo.InvariantCulture)).Append('H');
-    }
-
-    if (_minutes is > 0)
-    {
-      builder.Append(_minutes.Value.ToString("0.###", CultureInfo.InvariantCulture)).Append('M');
-    }
-
-    if (_seconds is > 0)
-    {
-      builder.Append(_seconds.Value.ToString("0.###", CultureInfo.InvariantCulture)).Append('S');
-    }
-
-    return builder.ToString();
-  }
-
-  public override bool Equals([NotNullWhen(true)] object? obj)
-  {
-    return obj is Duration duration  && Equals(duration);
-  }
-
-  public bool Equals(Duration other)
-  {
-    return Nullable.Equals(_years, other._years)
-           && Nullable.Equals(_months, other._months)
-           && Nullable.Equals(_weeks, other._weeks)
-           && Nullable.Equals(_days, other._days)
-           && Nullable.Equals(_hours, other._hours)
-           && Nullable.Equals(_minutes, other._minutes)
-           && Nullable.Equals(_seconds, other._seconds);
-  }
-
-  public override int GetHashCode()
-  {
-    return HashCode.Combine(_years, _months, _days, _weeks, _hours, _minutes, _seconds);
-  }
-
-  public static readonly Duration Zero = new();
-
-  public static Duration FromString(string duration)
-  {
-    int? years = null;
-    int? months = null;
-    int? weeks = null;
-    int? days = null;
-    double? hours = null;
-    double? minutes = null;
-    double? seconds = null;
-
-    var matched = false;
-    foreach (var regex in RegexArray)
-    {
-      var match = regex.Match(duration);
-      if (!match.Success)
+      if (startDate == endDate)
       {
-        continue;
+        return Zero;
       }
 
-      matched = true;
-      if (match.Groups["weeks"].Success)
+      var negative = false;
+      if (startDate > endDate)
       {
-        weeks = int.Parse(match.Groups["weeks"].Value);
-        break;
+        if (!absolute)
+        {
+          negative = true;
+        }
+
+        biggestDate = startDate;
+        smallestDate = endDate;
+      }
+      else
+      {
+        biggestDate = endDate;
+        smallestDate = startDate;
       }
 
-      if (match.Groups["years"].Success)
+      var years = biggestDate.Year - smallestDate.Year;
+      if (years > 0)
       {
-        years = int.Parse(match.Groups["years"].Value);
+        if (smallestDate.AddYears(years) > biggestDate)
+        {
+          years -= 1;
+        }
       }
 
-      if (match.Groups["months"].Success)
+      smallestDate = smallestDate.AddYears(years);
+      if (smallestDate == biggestDate)
       {
-        months = int.Parse(match.Groups["months"].Value);
+        return new Duration(years: years);
       }
 
-      if (match.Groups["days"].Success)
+      int months = 0;
+      for (var i = 1; i <= 12; i++)
       {
-        days = int.Parse(match.Groups["days"].Value);
+        months = i;
+        if (smallestDate.AddMonths(months) > biggestDate)
+        {
+          months -= 1;
+          break;
+        }
       }
 
-      if (match.Groups["hours"].Success)
+      smallestDate = smallestDate.AddMonths(months);
+      if (smallestDate == biggestDate)
       {
-        hours = double.Parse(match.Groups["hours"].Value, CultureInfo.InvariantCulture);
+        return new Duration(years: years, months: months);
       }
 
-      if (match.Groups["minutes"].Success)
+      var timespan = biggestDate - smallestDate;
+      return new Duration(
+        negative: negative,
+        years: years,
+        months: months,
+        days: timespan.Days,
+        hours: timespan.Hours,
+        minutes: timespan.Minutes,
+        seconds: timespan.Seconds + ((double)timespan.Milliseconds / 1000));
+    }
+
+    public static bool operator ==(Duration duration1, Duration duration2)
+    {
+      return duration1.Equals(duration2);
+    }
+
+    public static bool operator !=(Duration duration1, Duration duration2)
+    {
+      return !duration1.Equals(duration2);
+    }
+
+    public static DateTime operator +(DateTime fromDate, Duration duration)
+    {
+      var multiplier = duration._negative ? -1 : 1;
+      if (duration._weeks > 0)
       {
-        minutes = double.Parse(match.Groups["minutes"].Value, CultureInfo.InvariantCulture);
+        fromDate = fromDate.AddDays(duration._weeks * 7 * multiplier);
+      }
+      else
+      {
+        fromDate = fromDate.AddYears(duration._years * multiplier);
+        fromDate = fromDate.AddMonths(duration._months * multiplier);
       }
 
-      if (match.Groups["seconds"].Success)
+      fromDate = fromDate.AddDays(duration._days * multiplier);
+      fromDate = fromDate.AddHours(duration._hours * multiplier);
+      fromDate = fromDate.AddMinutes(duration._minutes * multiplier);
+      fromDate = fromDate.AddSeconds(duration._seconds * multiplier);
+      return fromDate;
+    }
+
+    public static DateTimeOffset operator +(DateTimeOffset fromDate, Duration duration)
+    {
+      var multiplier = duration._negative ? -1 : 1;
+      if (duration._weeks > 0)
       {
-        seconds = double.Parse(match.Groups["seconds"].Value, CultureInfo.InvariantCulture);
+        fromDate = fromDate.AddDays(duration._weeks * 7 * multiplier);
+      }
+      else
+      {
+        fromDate = fromDate.AddYears(duration._years * multiplier);
+        fromDate = fromDate.AddMonths(duration._months * multiplier);
       }
 
-      break;
+      fromDate = fromDate.AddDays(duration._days * multiplier);
+      fromDate = fromDate.AddHours(duration._hours * multiplier);
+      fromDate = fromDate.AddMinutes(duration._minutes * multiplier);
+      fromDate = fromDate.AddSeconds(duration._seconds * multiplier);
+      return fromDate;
     }
 
-    return !matched
-      ? throw new InvalidDurationException()
-      : new Duration(years, months, weeks, days, hours, minutes, seconds);
-  }
-
-  public static Duration FromTimeSpan(TimeSpan timeSpan)
-  {
-    return new Duration(
-      days: timeSpan.Days,
-      hours: timeSpan.Hours,
-      minutes: timeSpan.Minutes,
-      seconds: timeSpan.Seconds + ((double)timeSpan.Milliseconds / 1000));
-  }
-
-  public static Duration AbsoluteDifference(DateTime startDate, DateTime endDate)
-  {
-    DateTime biggestDate;
-    DateTime smallestDate;
-
-    if (startDate == endDate)
+    public static DateTime operator -(DateTime fromDate, Duration duration)
     {
-      return Zero;
-    }
-
-    if (startDate > endDate)
-    {
-      biggestDate = startDate;
-      smallestDate = endDate;
-    }
-    else
-    {
-      biggestDate = endDate;
-      smallestDate = startDate;
-    }
-
-    var years = biggestDate.Year - smallestDate.Year;
-    if (years > 0)
-    {
-      if (smallestDate.AddYears(years) > biggestDate)
+      var multiplier = duration._negative ? -1 : 1;
+      if (duration._weeks > 0)
       {
-        years -= 1;
+        fromDate = fromDate.AddDays(duration._weeks * 7 * -1 * multiplier);
       }
-    }
-
-    smallestDate = smallestDate.AddYears(years);
-    if (smallestDate == biggestDate)
-    {
-      return new Duration(years: years);
-    }
-
-    int months = 0;
-    for (var i = 1; i <= 12; i++)
-    {
-      months = i;
-      if (smallestDate.AddMonths(months) > biggestDate)
+      else
       {
-        months -= 1;
-        break;
+        fromDate = fromDate.AddYears(duration._years * -1 * multiplier);
+        fromDate = fromDate.AddMonths(duration._months * -1 * multiplier);
       }
+
+      fromDate = fromDate.AddDays(duration._days * -1 * multiplier);
+      fromDate = fromDate.AddHours(duration._hours * -1 * multiplier);
+      fromDate = fromDate.AddMinutes(duration._minutes * -1 * multiplier);
+      fromDate = fromDate.AddSeconds(duration._seconds * -1 * multiplier);
+      return fromDate;
     }
 
-    smallestDate = smallestDate.AddMonths(months);
-    if (smallestDate == biggestDate)
+    public static DateTimeOffset operator -(DateTimeOffset fromDate, Duration duration)
     {
-      return new Duration(years: years, months: months);
+      var multiplier = duration._negative ? -1 : 1;
+      if (duration._weeks > 0)
+      {
+        fromDate = fromDate.AddDays(duration._weeks * 7 * -1 * multiplier);
+      }
+      else
+      {
+        fromDate = fromDate.AddYears(duration._years * -1 * multiplier);
+        fromDate = fromDate.AddMonths(duration._months * -1 * multiplier);
+      }
+
+      fromDate = fromDate.AddDays(duration._days * -1 * multiplier);
+      fromDate = fromDate.AddHours(duration._hours * -1 * multiplier);
+      fromDate = fromDate.AddMinutes(duration._minutes * -1 * multiplier);
+      fromDate = fromDate.AddSeconds(duration._seconds * -1 * multiplier);
+      return fromDate;
     }
-
-    var timespan = biggestDate - smallestDate;
-    return new Duration(
-      years: years,
-      months: months,
-      days: timespan.Days,
-      hours: timespan.Hours,
-      minutes: timespan.Minutes,
-      seconds: timespan.Seconds + ((double)timespan.Milliseconds / 1000));
-  }
-
-  public static bool operator ==(Duration duration1, Duration duration2)
-  {
-    return duration1.Equals(duration2);
-  }
-
-  public static bool operator !=(Duration duration1, Duration duration2)
-  {
-    return !duration1.Equals(duration2);
-  }
-
-  public static DateTime operator +(DateTime fromDate, Duration duration)
-  {
-    if (duration is { _weeks: > 0 })
-    {
-      fromDate = fromDate.AddDays(duration._weeks.Value * 7);
-    }
-    else
-    {
-      fromDate = fromDate.AddYears(duration._years ?? 0);
-      fromDate = fromDate.AddMonths(duration._months ?? 0);
-    }
-
-    fromDate = fromDate.AddDays(duration._days ?? 0);
-    fromDate = fromDate.AddHours(duration._hours ?? 0);
-    fromDate = fromDate.AddMinutes(duration._minutes ?? 0);
-    fromDate = fromDate.AddSeconds(duration._seconds ?? 0);
-    return fromDate;
-  }
-
-  public static DateTimeOffset operator +(DateTimeOffset fromDate, Duration duration)
-  {
-    if (duration is { _weeks: > 0 })
-    {
-      fromDate = fromDate.AddDays(duration._weeks.Value * 7);
-    }
-    else
-    {
-      fromDate = fromDate.AddYears(duration._years ?? 0);
-      fromDate = fromDate.AddMonths(duration._months ?? 0);
-    }
-
-    fromDate = fromDate.AddDays(duration._days ?? 0);
-    fromDate = fromDate.AddHours(duration._hours ?? 0);
-    fromDate = fromDate.AddMinutes(duration._minutes ?? 0);
-    fromDate = fromDate.AddSeconds(duration._seconds ?? 0);
-    return fromDate;
-  }
-
-  public static DateTime operator -(DateTime fromDate, Duration duration)
-  {
-    if (duration is { _weeks: > 0 })
-    {
-      fromDate = fromDate.AddDays(duration._weeks.Value * 7 * -1);
-    }
-    else
-    {
-      fromDate = fromDate.AddYears((duration._years ?? 0) * -1);
-      fromDate = fromDate.AddMonths((duration._months ?? 0) * -1);
-    }
-
-    fromDate = fromDate.AddDays((duration._days ?? 0) * -1);
-    fromDate = fromDate.AddHours((duration._hours ?? 0) * -1);
-    fromDate = fromDate.AddMinutes((duration._minutes ?? 0) * -1);
-    fromDate = fromDate.AddSeconds((duration._seconds ?? 0) * -1);
-    return fromDate;
-  }
-
-  public static DateTimeOffset operator -(DateTimeOffset fromDate, Duration duration)
-  {
-    if (duration is { _weeks: > 0 })
-    {
-      fromDate = fromDate.AddDays(duration._weeks.Value * 7 * -1);
-    }
-    else
-    {
-      fromDate = fromDate.AddYears((duration._years ?? 0) * -1);
-      fromDate = fromDate.AddMonths((duration._months ?? 0) * -1);
-    }
-
-    fromDate = fromDate.AddDays((duration._days ?? 0) * -1);
-    fromDate = fromDate.AddHours((duration._hours ?? 0) * -1);
-    fromDate = fromDate.AddMinutes((duration._minutes ?? 0) * -1);
-    fromDate = fromDate.AddSeconds((duration._seconds ?? 0) * -1);
-    return fromDate;
   }
 }

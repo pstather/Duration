@@ -1,16 +1,19 @@
-namespace Duration;
-
-public class InvalidDurationException : Exception
+namespace Duration
 {
-  public InvalidDurationException()
-  {
-  }
+  using System;
 
-  public InvalidDurationException(string message) : base(message)
+  public class InvalidDurationException : Exception
   {
-  }
+    public InvalidDurationException()
+    {
+    }
 
-  public InvalidDurationException(string message, Exception innerException) : base(message, innerException)
-  {
+    public InvalidDurationException(string message) : base(message)
+    {
+    }
+
+    public InvalidDurationException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
   }
 }

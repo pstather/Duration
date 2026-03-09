@@ -1,3 +1,6 @@
 <Solution>
-  <Project Path="Duration/Duration.csproj" />
+  <Folder Name="/src/">
+    <Project Path="Duration/Duration.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
 </Solution>
